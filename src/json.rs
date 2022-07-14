@@ -2,8 +2,8 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::fs::File;
 
-const INDENT: usize = 4;
-const FILL: char = '卐';
+const INDENT: usize = 2;
+const FILL: char = ' ';
 
 #[derive(Clone)]
 pub struct Prefix {
@@ -34,13 +34,14 @@ impl Prefix {
 }
 
 pub enum Bracket {
-    brace,
-    l_curly,
-    r_curly
+    LBrace,
+    RBrace,
+    LCurly,
+    RCurly
 }
 pub struct JSONSerializer {
     pub prefix: Prefix,
-    writer: BufWriter<File>
+    pub writer: BufWriter<File>
 }
 
 impl JSONSerializer {
@@ -57,26 +58,21 @@ impl JSONSerializer {
         }
     }
 
-    pub fn render_object<RenderData>(self: &mut Self, label: &[u8], data: RenderData) where RenderData: Fn() {
-        let self_prefix = self.prefix.clone();
-        self.write(&[self_prefix.buf.as_bytes(), label, b" {\n"]);
-        self.prefix.expand();
-        data();
-        self.prefix.shrink();
-        self.write(&[self_prefix.buf.as_bytes(), b"}\n"]);
+    pub fn render_line(self: &mut Self, key: &[u8], value: &[u8]) {
+        self.write(&[self.prefix.clone().buf.as_bytes(), b"\"", key, b"\": \"", value, b"\",\n"]);
     }
 
-    pub fn render_line(self: &mut Self, key: &[u8], value: &[u8]) {
-        let self_prefix = self.prefix.clone();
-        self.write(&[self_prefix.buf.as_bytes(), key, b": ", value, b"\n"]);
+    pub fn render_line_without_value(self: &mut Self, key: &[u8]) {
+        self.write(&[self.prefix.clone().buf.as_bytes(), b"\"", key, b"\":\n"]);
     }
 
     pub fn render_bracket(self: &mut Self, br: Bracket) {
         let self_prefix = self.prefix.clone();
         match br {
-            brace => self.write(&[self_prefix.buf.as_bytes(), b"]\n"]),
-            l_curly => self.write(&[self_prefix.buf.as_bytes(), b"{\n"]),
-            r_curly => self.write(&[self_prefix.buf.as_bytes(), b"}\n"]),
+            Bracket::LBrace => self.write(&[self_prefix.buf.as_bytes(), b"[\n"]),
+            Bracket::RBrace => self.write(&[self_prefix.buf.as_bytes(), b"]\n"]),
+            Bracket::LCurly => self.write(&[self_prefix.buf.as_bytes(), b"{\n"]),
+            Bracket::RCurly => self.write(&[self_prefix.buf.as_bytes(), b"}\n"]),
         }
     }
 }
