@@ -16,14 +16,14 @@ pub mod index;
 
 
 const DIAGNOSTICS : bool = false;
-const EXCLUDE : bool = false;
+const EXCLUDE : bool = true;
 
 fn main() {
-    let file = File::create(r".\test.json").unwrap();
+    let file = File::create(r"./test.json").unwrap();
     let mut json = JSONSerializer::new(file);
     let clang = Clang::new().unwrap();
     let index = Index::new(&clang, EXCLUDE, DIAGNOSTICS);
-    let parser = index.parser(PathBuf::from(r"C:\work\loft-cpp\src\main.cpp"));
+    let parser = index.parser(PathBuf::from(r"C:/work/loft-cpp/src/main.cpp"));
     let tu = parser.parse().unwrap();
     for entity in tu.get_entity().get_children() {   
         let set = collect_entities(entity);
@@ -31,7 +31,7 @@ fn main() {
             println!("{}", el);
         }
     }
-    let ast = AST::new(tu.get_entity());
+    let mut ast = AST::new(tu.get_entity());
     // for entity in ast.nodes {
     //     println!("{}", entity.get_name().get_name());
     // }
@@ -42,7 +42,7 @@ fn main() {
     //     json = Node::new(entity).serialize(json);
     //     nodes.push(node);
     // }
-    let node = Node::new(tu.get_entity());
+    let node = Node::new(tu.get_entity(), &mut ast).0;
     json = node.serialize(json);
     json.writer.flush().unwrap();
     // parse_cpp::construct_graph(file, output);
