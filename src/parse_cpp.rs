@@ -1,4 +1,3 @@
-use crate::index::collect_entities;
 use crate::json::JSONSerializer;
 use clang::*;
 use std::{fs::*, io::Write, path::PathBuf};

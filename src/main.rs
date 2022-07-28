@@ -1,4 +1,4 @@
-use std::{env};
+use std::{env, fs, path::PathBuf};
 use rustop::opts;
 use parse_cpp::parse_trees;
 
@@ -46,17 +46,48 @@ fn fill_excludes(exclude: &mut Vec<String>, include_paths: Vec<String>) {
     }
 }
 
+fn find_code_in_dir(path: &PathBuf) -> Vec<String> {
+    let mut result = Vec::new();
+    if path.is_dir() {
+        let read_path = fs::read_dir(path).unwrap();
+        for entry in read_path {
+            let entry = entry.unwrap();
+            if entry.file_name().to_str().unwrap().contains(".cpp") || entry.file_name().to_str().unwrap().contains(".c") {
+                result.push(String::from(entry.path().to_str().unwrap()));
+            }
+        }
+    }
+    result
+}
+
+fn expand_input(input_files_and_dirs: Vec<String>) -> Vec<String> {
+    let mut result = Vec::new();
+    for mut path in input_files_and_dirs {
+        if PathBuf::from(path.clone()).is_dir() {
+            check_slash(&mut path);
+            result.append(&mut find_code_in_dir(&PathBuf::from(path)));
+        } else {
+            result.push(path);
+        }
+    }
+    result
+}
+
 fn config() -> (Vec<String>, Vec<String>, String, Vec<String>) {
     let (mut args, _) = opts! {
-        opt input_files:Vec<String> = Vec::new(), desc:"Input files.", multi:true;
+        opt input_files:Vec<String> = Vec::new(), 
+        desc:"Input files. If you put directory here, program will parse all .cpp and .c files there.", multi:true;
         opt output_dir:String=String::from("./"), desc:"Output directory, default is the current.";
         opt include:Vec<String> = Vec::new(), desc:"Include path.", multi:true;
         opt parse_options:Vec<String> = Vec::new(), desc:"Options passed to clang directly.", multi:true;
-        opt exclude:Vec<String> = Vec::new(), desc:"Directories from which AST nodes shouldn't be traversed. By default, program will try to put included libraries there which may not work correctly. Set \"-\" to exclude nothing.", multi:true;
+        opt exclude:Vec<String> = Vec::new(), desc:"Directories from which AST nodes shouldn't be traversed. 
+        By default, program will try to put included libraries there which may not work correctly. 
+        Set \"-\" to exclude nothing.", multi:true;
     }.parse_or_exit();
-    fill_excludes(&mut args.exclude, append_includes(args.parse_options.clone(), args.include.clone()));
+    fill_excludes(&mut args.exclude, 
+    append_includes(args.parse_options.clone(), args.include.clone()));
     check_slash(&mut args.output_dir);
-    (args.input_files, 
+    (expand_input(args.input_files), 
     append_includes(args.parse_options, args.include.clone()), 
     args.output_dir, 
     args.exclude)
