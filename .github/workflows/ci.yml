@@ -54,5 +54,8 @@ jobs:
           - stable
     steps:
       - uses: actions/checkout@v3
+      - name: Install dependencies on ubuntu
+        if: startsWith(matrix.config.name, 'Ubuntu')
+        run: sudo apt-get install clang
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo build --verbose
