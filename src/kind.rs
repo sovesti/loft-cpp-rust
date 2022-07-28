@@ -1,3 +1,4 @@
+use clang::EntityKind::*;
 use clang::EntityKind;
 
 pub fn get_kind_label(kind_name: EntityKind) -> String {

@@ -23,7 +23,7 @@ fn create_output_file (input_file_path: String, output_dir: String) -> File {
     File::create(output_dir + output_file_name + ".json").unwrap()
 }
 
-pub fn parse_trees (input_files: Vec<String>, mut parse_options: Vec<String>, output_dir: String) {
+pub fn parse_trees (input_files: Vec<String>, mut parse_options: Vec<String>, output_dir: String, exclude_dirs: Vec<String>) {
     let clang = Clang::new().unwrap();
     let index = Index::new(&clang, EXCLUDE, DIAGNOSTICS);
     for path in input_files {
@@ -32,13 +32,7 @@ pub fn parse_trees (input_files: Vec<String>, mut parse_options: Vec<String>, ou
         let tu = get_tu(&parser);
         let out = create_output_file(path, output_dir.clone());
         let mut json = JSONSerializer::new(out);
-        for entity in tu.get_entity().get_children() {   
-            let set = collect_entities(entity);
-            for el in set {
-                println!("{}", el);
-            }
-        }
-        let mut ast = AST::new(tu.get_entity());
+        let mut ast = AST::new(tu.get_entity(), exclude_dirs.clone());
         let node = Node::new(tu.get_entity(), &mut ast).0;
         json = node.serialize(json);
         json.writer.flush().unwrap();

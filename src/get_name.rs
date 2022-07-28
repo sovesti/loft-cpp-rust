@@ -19,6 +19,12 @@ impl Name for String {
     }
 }
 
+impl Name for Type<'_> {
+    fn get_name(&self) -> String {
+        self.get_display_name()
+    }
+}
+
 impl Name for Usr {
     fn get_name(&self) -> String {
         self.0.to_string()

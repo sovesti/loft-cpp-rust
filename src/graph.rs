@@ -68,7 +68,7 @@ pub struct Node {
     kind: (Key, String),
     name: (Key, String),
     display_name: (Key, String),
-    // _type: (Key, String),
+    _type: (Key, String),
     usr: (Key, String),
     location: (Key, String),
     children: Array<Node>
@@ -103,7 +103,7 @@ impl Node {
             kind: (Key::Kind, get_kind_label(node.get_kind())), 
             name: (Key::Name, return_empty_if_null(node.get_name())), 
             display_name: (Key::DisplayName, return_empty_if_null(node.get_display_name())),
-            // _type: (Key::Type, node.get_type().get_name()),
+            _type: (Key::Type, node.get_type().get_name()),
             usr: (Key::Usr, node.get_usr().get_name()),
             location: (Key::Location, node.get_location().get_name()), 
             children: (Array { 
@@ -118,9 +118,9 @@ impl Node {
 pub fn visit_ast<'a, Task: FnMut(Entity<'a>), Filter: Fn(Entity<'a>) -> bool>
     (parent: Entity<'a>, mut task_and_registry: (Task, HashSet<u64>), filter: &Filter) 
     -> (Task, HashSet<u64>) {
-    task_and_registry.0(parent);
     let mut hasher = DefaultHasher::new();
     if filter(parent) {
+        task_and_registry.0(parent);
         parent.hash(&mut hasher);
         if task_and_registry.1.insert(hasher.finish()) {
             for child in parent.get_children() {
@@ -131,6 +131,14 @@ pub fn visit_ast<'a, Task: FnMut(Entity<'a>), Filter: Fn(Entity<'a>) -> bool>
     task_and_registry
 }
 
+fn should_be_excluded(entity: Entity, exclude_dirs: Vec<String>) -> bool {
+    exclude_dirs
+    .into_iter()
+    .map(|path| entity.get_location().get_name().contains(&path))
+    .collect::<Vec<bool>>()
+    .contains(&true) || entity.get_location().get_name().contains("include")
+}
+
 #[derive(Clone)]
 pub struct AST<'tu> {
     _root: Entity<'tu>,
@@ -138,10 +146,10 @@ pub struct AST<'tu> {
 }
 
 impl<'a> AST<'a> {
-    pub fn new(parent: Entity<'a>) -> AST<'a> {
+    pub fn new(parent: Entity<'a>, exclude_dirs: Vec<String>) -> AST<'a> {
         let mut nodes = HashSet::new();
         let insertion_task = |entity: Entity<'a>| { nodes.insert(entity); };
-        let filter = |entity: Entity<'a>| { true };
+        let filter = |entity: Entity<'a>| { !should_be_excluded(entity.clone(), exclude_dirs.clone()) };
         let _ = visit_ast(parent, (insertion_task, HashSet::new()), &filter).0;
         AST { _root: parent, nodes: nodes }
     }
