@@ -58,7 +58,6 @@ jobs:
         if: startsWith(matrix.config.name, 'Ubuntu')
         run: |
           sudo apt-get install clang
-          cd /usr/lib/x86_64-unknown-linux
-          ln -s libclang.so.1 libclang.so
+          find /home/runner -iname libclang
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo build --verbose
