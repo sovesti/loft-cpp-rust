@@ -104,11 +104,18 @@ impl JSONSerializer {
 
     pub fn render_line(self: &mut Self, key: &[u8], value: &[u8]) {
         let value_with_escaped_quotes = replace(value, b"\"", b"\\\"");
-        self.write(&[b"\n", self.prefix.clone().buf.as_bytes(), b"\"", key, b"\": \"", value_with_escaped_quotes.as_slice(), b"\","]);
+        self.write(&[b"\n", self.prefix.clone().buf.as_bytes(), b"\"", key, b"\": \"", value_with_escaped_quotes.as_slice(), b"\""]);
     }
 
-    pub fn render_line_without_value(self: &mut Self, key: &[u8]) {
-        self.write(&[b"\n", self.prefix.clone().buf.as_bytes(), b"\"", key, b"\":"]);
+    pub fn render_line_with_bracket(self: &mut Self, key: &[u8], br: Bracket) {
+        let bracket: &[u8];
+        match br {
+            Bracket::LBrace => bracket = b"[",
+            Bracket::RBrace => bracket = b"[]",
+            Bracket::LCurly => bracket = b"{",
+            Bracket::RCurly => bracket = b"{}",
+        }
+        self.write(&[b"\n", self.prefix.clone().buf.as_bytes(), b"\"", key, b"\": ", bracket]);
     }
 
     pub fn render_comma(self: &mut Self) {
