@@ -44,7 +44,7 @@ impl OutFileKey {
     fn get_key (&self) -> String {
         match self {
             OutFileKey::_AST => String::from("_ast"),
-            OutFileKey::_CallGraph => String::from("_callgraph"),
+            OutFileKey::_CallGraph => String::from("_call_graph"),
         }
     }
 }
@@ -57,34 +57,37 @@ fn create_output_file (input_file_path: &str, output_dir: &str, key: OutFileKey)
     File::create(String::from(output_dir) + output_file_name + &key.get_key() + ".json").unwrap()
 }
 
-fn build_call_graph (label: String, ast: AST) -> CallGraph {
+fn build_call_graph<'tu>(label: String, ast: AST<'tu>, exclude_dirs: &Vec<String>, system_headers: bool) -> CallGraph<'tu> {
     let mut result = CallGraph::new(label, ast.clone());
     result.take_callable_from_ast(ast);
     for node in result.nodes.clone() {
-        result.add_callees(node);
+        result.add_callees(node, exclude_dirs, system_headers);
     }
     result
 }
 
+fn get_ast_and_serializer<'tu>(tu: &'tu TranslationUnit, path: &str, output_dir: &str, key: OutFileKey)
+ -> (AST<'tu>, JSONSerializer) {
+    let ast = AST::new(tu.get_entity());
+    let json = JSONSerializer::new(create_output_file(path, output_dir, key));
+    (ast, json)
+}
+
 fn dump_ast(tu: &TranslationUnit, path: &str, output_dir: &str, exclude_dirs: &Vec<String>, system_headers: bool) {
-    let mut ast: AST = AST::new(tu.get_entity());
-    let out = create_output_file(path, output_dir, OutFileKey::_AST);
-    let mut json = JSONSerializer::new(out);
+    let (mut ast, mut json) = get_ast_and_serializer(tu, path, output_dir, OutFileKey::_AST);
     let node: Node = Node::new(tu.get_entity(), &mut ast, true, exclude_dirs, system_headers).0;
     json.render_bracket(Bracket::LCurly);
     json.prefix.expand();
     json = node.serialize(json);
-    json.render_bracket(Bracket::RCurly);
     json.prefix.shrink();
+    json.render_bracket(Bracket::RCurly);
     json.writer.flush().unwrap();
 }
 
-fn dump_call_graph(tu: &TranslationUnit, path: &str, output_dir: &str) {
-    let ast: AST = AST::new(tu.get_entity());
+fn dump_call_graph(tu: &TranslationUnit, path: &str, output_dir: &str, exclude_dirs: &Vec<String>, system_headers: bool) {
+    let (ast, mut json) = get_ast_and_serializer(tu, path, output_dir, OutFileKey::_CallGraph);
     let path_as_path = PathBuf::from(path);
-    let out = create_output_file(path, output_dir, OutFileKey::_CallGraph);
-    let mut json = JSONSerializer::new(out);
-    let call_graph = build_call_graph(String::from(path_as_path.file_name().unwrap().to_str().unwrap()), ast); 
+    let call_graph = build_call_graph(String::from(path_as_path.file_name().unwrap().to_str().unwrap()), ast, exclude_dirs, system_headers); 
     json = call_graph.serialize(json);
     json.writer.flush().unwrap();
 }
@@ -103,7 +106,7 @@ pub fn parse_trees(
         parser.arguments(&mut parse_options);
         let tu = get_tu(&parser);
         dump_ast(&tu, &path, &output_dir, &exclude_dirs, system_headers);
-        dump_call_graph(&tu, &path, &output_dir);
+        dump_call_graph(&tu, &path, &output_dir, &exclude_dirs, system_headers);
     }
 }
 

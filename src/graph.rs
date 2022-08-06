@@ -31,12 +31,16 @@ use crate::get_name::*;
 
 pub trait Serialize {
     fn serialize(&self, json: JSONSerializer) -> JSONSerializer;
+
+    fn need_to_be_serialized(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Array<T: Serialize> {
     name: Key,
-    members: Vec<T>
+    pub members: Vec<T>
 }
 
 impl<T: Serialize> Serialize for Array<T> {
@@ -48,12 +52,14 @@ impl<T: Serialize> Serialize for Array<T> {
             json.prefix.expand();
             let mut first = true;
             for member in &self.members {
-                if first {
-                    first = false;
-                } else {
-                    json.render_comma();
+                if member.need_to_be_serialized() {                    
+                    if first {
+                        first = false;
+                    } else {
+                        json.render_comma();
+                    }
+                    json = member.serialize(json);
                 }
-                json = member.serialize(json);
             }
             json.prefix.shrink();
             json.render_bracket(Bracket::RBrace);
@@ -76,7 +82,7 @@ impl<T : Serialize> Array<T> {
 }
 
 #[derive(Clone, Debug)]
-enum Key {
+pub enum Key {
     Label,
     Kind,
     Name,
@@ -132,26 +138,28 @@ pub struct Node<'tu> {
 
 impl<'tu> Serialize for Node<'tu> {
     fn serialize(&self, mut json: JSONSerializer) -> JSONSerializer {
-        if self.serialize {
-            json.render_line_with_bracket(self.get_node_hash().to_string().as_bytes(), Bracket::LCurly);
-            json.prefix.expand();
-            json.render_line(Key::Label.get_key(), &self.display_name.1.as_bytes());
+        json.render_line_with_bracket(self.get_node_hash().to_string().as_bytes(), Bracket::LCurly);
+        json.prefix.expand();
+        json.render_line(Key::Label.get_key(), &self.display_name.1.as_bytes());
+        json.render_comma();
+        json.render_line_with_bracket(Key::Metadata.get_key(), Bracket::LCurly);
+        json.prefix.expand();
+        for attr in [&self.kind, &self.name, &self.display_name, &self._type, &self.usr, &self.location] {
+            json.render_line(attr.0.get_key(), attr.1.as_bytes());
             json.render_comma();
-            json.render_line_with_bracket(Key::Metadata.get_key(), Bracket::LCurly);
-            json.prefix.expand();
-            for attr in [&self.kind, &self.name, &self.display_name, &self._type, &self.usr, &self.location] {
-                json.render_line(attr.0.get_key(), attr.1.as_bytes());
-                json.render_comma();
-            }
-            if self.serialize_children {
-                json = self.children.serialize(json);
-            }
-            json.prefix.shrink();
-            json.render_bracket(Bracket::RCurly);
-            json.prefix.shrink();
-            json.render_bracket(Bracket::RCurly);
         }
+        if self.serialize_children {
+            json = self.children.serialize(json);
+        }
+        json.prefix.shrink();
+        json.render_bracket(Bracket::RCurly);
+        json.prefix.shrink();
+        json.render_bracket(Bracket::RCurly);
         json
+    }
+
+    fn need_to_be_serialized(&self) -> bool {
+        self.serialize
     }
 }
 
@@ -161,9 +169,9 @@ impl<'a> Node<'a> {
         let mut children_as_nodes: Vec<Node> = Vec::new();
         for child in children_as_entities {
             if ast.nodes.contains(&child) {
-                let child_as_node_wuth_ast = Node::new(ast.nodes.take(&child).unwrap(), ast, serialize_children, exclude_dirs, system_headers);
-                ast = child_as_node_wuth_ast.1;
-                children_as_nodes.push(child_as_node_wuth_ast.0); 
+                let child_as_node_with_ast = Node::new(ast.nodes.take(&child).unwrap(), ast, serialize_children, exclude_dirs, system_headers);
+                ast = child_as_node_with_ast.1;
+                children_as_nodes.push(child_as_node_with_ast.0); 
             }
         }
         (Node { 
@@ -180,7 +188,7 @@ impl<'a> Node<'a> {
                     children_as_nodes
                 )
             ),
-            serialize: !AST::should_be_excluded(node.clone(), exclude_dirs) && (!node.is_in_system_header() || system_headers),
+            serialize: !(AST::should_be_excluded(node.clone(), exclude_dirs)) && (!(node.is_in_system_header()) || system_headers),
             serialize_children: serialize_children
         },
         ast)
@@ -198,8 +206,9 @@ fn get_hash(entity: Entity<'_>) -> u64 {
 }
 
 pub struct Edge<'tu> {
-    source: (Key, Entity<'tu>),
-    target: (Key, Entity<'tu>),
+    pub source: (Key, Entity<'tu>),
+    pub target: (Key, Entity<'tu>),
+    pub call_expr: Entity<'tu>,
 }
 
 impl Serialize for Edge<'_> {
@@ -209,6 +218,8 @@ impl Serialize for Edge<'_> {
         json.render_line(self.source.0.get_key(), get_hash(self.source.1).to_string().as_bytes());
         json.render_comma();
         json.render_line(self.target.0.get_key(), get_hash(self.target.1).to_string().as_bytes());
+        json.render_comma();
+        json.render_line(Key::Location.get_key(), self.call_expr.get_location().get_name().as_bytes());
         json.prefix.shrink();
         json.render_bracket(Bracket::RCurly);
         json
@@ -216,8 +227,8 @@ impl Serialize for Edge<'_> {
 }
 
 impl<'tu> Edge<'tu> {
-    fn new (source: Entity<'tu>, target: Entity<'tu>) -> Edge<'tu> {
-        Edge { source: (Key::Source, source), target: (Key::Target, target) }
+    fn new (source: Entity<'tu>, call_expr: Entity<'tu>) -> Edge<'tu> {
+        Edge { source: (Key::Source, source), target: (Key::Target, CallGraph::get_callee(call_expr.clone())), call_expr: call_expr }
     }
 }
 
@@ -255,7 +266,7 @@ impl<'a> AST<'a> {
         .into_iter()
         .map(|path| entity.get_location().get_name().contains(path))
         .collect::<Vec<bool>>()
-        .contains(&true) || entity.get_location().get_name().contains("include")
+        .contains(&true)
     }
 }
 pub struct CallGraph<'tu> {
@@ -279,6 +290,7 @@ impl<'tu> CallGraph<'tu> {
                 | EntityKind::Destructor
                 | EntityKind::FunctionDecl
                 | EntityKind::LambdaExpr
+                | EntityKind::FunctionTemplate
                 => { result.insert(entity); },
                 _ => ()
             }
@@ -307,17 +319,23 @@ impl<'tu> CallGraph<'tu> {
             }
         }
         match result.get_definition() {
-            Some(callee_definition) => callee_definition,
-            None => result
+            Some(callee_definition) => { result = callee_definition; },
+            None => ()
         }
+        println!("{}", get_kind_label(result.get_kind()));
+        result
     }
 
 
-    pub fn add_callees(&mut self, node: Entity<'tu>) {
+    pub fn add_callees(&mut self, node: Entity<'tu>, exclude_dirs: &Vec<String>, system_headers: bool) {
         let filter = |entity: Entity| { entity.get_kind() == EntityKind::CallExpr };
         let get_callee = |call_expr: Entity<'tu>, _: Entity<'tu>| { 
-            self.edges.push(Edge::new(node.clone(), CallGraph::get_callee(call_expr)));
-            EntityVisitResult::Recurse
+            if !AST::should_be_excluded(call_expr.clone(), exclude_dirs) && (!call_expr.is_in_system_header() || system_headers) {
+                self.edges.push(Edge::new(node.clone(), call_expr));
+                EntityVisitResult::Recurse
+            } else {
+                EntityVisitResult::Continue
+            }
         };
         visit_ast(node, get_callee, &filter);
     }
